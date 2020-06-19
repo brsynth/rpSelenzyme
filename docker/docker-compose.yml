@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+
+  gen-req:
+    image: brsynth/pip-gen-req
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/req.dockerfile
+      args:
+        IMAGE: ${BASE_IMAGE}
+    command: sh -c 'pip-compile requirements.in > requirements.txt'
+    volumes:
+      - ../requirements:/req
+
+  fetch-data:
+    build:
+      context: .
+      dockerfile: dockerfiles/git.dockerfile
+    command: sh -c '
+                git -C /tmp clone https://brsforge.micalis.fr/DBT_pipeline/rpSelenzyme_data.git .
+             && cd /home/data
+             && tar xvf /tmp/data.tar.xz --strip 1'
+    volumes:
+      - data:/home/data
+
+  tool:
+    image: brsynth/${COMPOSE_PROJECT_NAME}
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/main.dockerfile
+      args:
+        IMAGE: ${BASE_IMAGE}
+    networks:
+      db:
+    depends_on:
+      - db
+    volumes:
+      - data:/home/data
+
+  db:
+    image: redis:5-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes
+    networks:
+      db:
+    volumes:
+      - redis:/data
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+secrets:
+  selenzyme_data:
+    file: ./selenzyme_data.secrets
+
+volumes:
+  data:
+  redis:
+
+networks:
+  db:
